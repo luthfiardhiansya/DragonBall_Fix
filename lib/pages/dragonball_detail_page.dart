@@ -1,100 +1,80 @@
 import 'package:flutter/material.dart';
 
 import '../models/dragonball.dart';
-import '../theme/app_theme.dart';
 
 class DragonballDetailPage extends StatelessWidget {
   const DragonballDetailPage({super.key, required this.character});
 
   final Item character;
 
+  String get _heroTag => 'dragonball-character-${character.id}';
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
+    final colors = theme.colorScheme;
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Detail Karakter'),
-        actions: const [ThemeModeToggleButton()],
+        title: const Text('Character Information'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 30),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CoverImage(url: character.image),
-            const SizedBox(height: 20),
-            Text(
-              character.name,
-              style: theme.textTheme.headlineMedium?.copyWith(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w800,
+            SizedBox(
+              height: 430,
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(0, .25),
+                            radius: .8,
+                            colors: [
+                              colors.primary.withValues(alpha: .20),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 24,
+                    right: 24,
+                    bottom: 8,
+                    child: Container(
+                      height: 110,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(100),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.primary.withValues(alpha: .22),
+                            blurRadius: 42,
+                            spreadRadius: 10,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Hero(
+                      tag: _heroTag,
+                      child: _DetailArtwork(url: character.image),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Character ID #${character.id}',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 20),
-            _PowerCard(character: character),
-            const SizedBox(height: 24),
-            _SectionTitle(icon: Icons.menu_book_outlined, title: 'Sinopsis'),
-            const SizedBox(height: 10),
-            Text(
-              character.description,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.6,
-              ),
-            ),
-            const SizedBox(height: 24),
-            _SectionTitle(
-              icon: Icons.info_outline,
-              title: 'Informasi Karakter',
-            ),
-            const SizedBox(height: 10),
-            Card(
-              color: theme.colorScheme.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.07),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _InfoRow(
-                      icon: Icons.category_outlined,
-                      label: 'Race',
-                      value: _raceLabel(character.race),
-                    ),
-                    _InfoRow(
-                      icon: Icons.wc_outlined,
-                      label: 'Gender',
-                      value: _genderLabel(character.gender),
-                    ),
-                    _InfoRow(
-                      icon: Icons.groups_outlined,
-                      label: 'Affiliation',
-                      value: _affiliationLabel(character.affiliation),
-                    ),
-                    _InfoRow(
-                      icon: Icons.verified_outlined,
-                      label: 'Status data',
-                      value: character.deletedAt == null
-                          ? 'Aktif'
-                          : 'Dihapus pada ${character.deletedAt}',
-                      isLast: true,
-                    ),
-                  ],
-                ),
-              ),
+            Transform.translate(
+              offset: const Offset(0, -46),
+              child: _CharacterInformationCard(character: character),
             ),
           ],
         ),
@@ -103,122 +83,189 @@ class DragonballDetailPage extends StatelessWidget {
   }
 }
 
-class _CoverImage extends StatelessWidget {
-  const _CoverImage({required this.url});
+class _DetailArtwork extends StatelessWidget {
+  const _DetailArtwork({required this.url});
 
   final String url;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: AspectRatio(
-        aspectRatio: 0.82,
-        child: url.isEmpty
-            ? ColoredBox(
-                color: theme.colorScheme.surface,
-                child: Icon(
-                  Icons.person_outline,
-                  color: theme.colorScheme.primary,
-                  size: 80,
-                ),
-              )
-            : Image.network(
-                url,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => ColoredBox(
-                  color: theme.colorScheme.surface,
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: theme.colorScheme.primary,
-                    size: 64,
-                  ),
-                ),
-              ),
+    final colors = Theme.of(context).colorScheme;
+    if (url.isEmpty) {
+      return Center(
+        child: Icon(Icons.person_outline, size: 100, color: colors.primary),
+      );
+    }
+    return Image.network(
+      url,
+      fit: BoxFit.contain,
+      alignment: Alignment.bottomCenter,
+      errorBuilder: (_, _, _) => Center(
+        child: Icon(
+          Icons.broken_image_outlined,
+          size: 72,
+          color: colors.primary,
+        ),
       ),
     );
   }
 }
 
-class _PowerCard extends StatelessWidget {
-  const _PowerCard({required this.character});
+class _CharacterInformationCard extends StatelessWidget {
+  const _CharacterInformationCard({required this.character});
 
   final Item character;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      color: theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.primary.withValues(alpha: 0.25),
-        ),
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 24, 18, 20),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: .97),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: colors.primary.withValues(alpha: .25)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .25),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: _PowerValue(
-                label: 'Ki',
-                value: character.ki,
-                icon: Icons.bolt,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Text(
+              character.name.toUpperCase(),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 27,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.3,
               ),
             ),
-            Container(
-              width: 1,
-              height: 56,
-              color: theme.colorScheme.primary.withValues(alpha: 0.25),
-            ),
-            Expanded(
-              child: _PowerValue(
-                label: 'Max Ki',
-                value: character.maxKi,
-                icon: Icons.auto_awesome,
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _DetailStat(
+                  icon: Icons.category_outlined,
+                  label: 'RACE',
+                  value: _raceLabel(character.race),
+                ),
               ),
+              Expanded(
+                child: _DetailStat(
+                  icon: Icons.bolt_rounded,
+                  label: 'KI',
+                  value: character.ki,
+                ),
+              ),
+              Expanded(
+                child: _DetailStat(
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'MAX KI',
+                  value: character.maxKi,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          const _DetailSectionTitle(
+            icon: Icons.menu_book_outlined,
+            title: 'Origin Story',
+          ),
+          const SizedBox(height: 8),
+          Text(
+            character.description,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              height: 1.55,
+              fontSize: 13,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 20),
+          const _DetailSectionTitle(
+            icon: Icons.info_outline_rounded,
+            title: 'Character Data',
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colors.onSurface.withValues(alpha: .035),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              children: [
+                _DetailInfoRow(
+                  label: 'Gender',
+                  value: _genderLabel(character.gender),
+                ),
+                _DetailInfoRow(
+                  label: 'Affiliation',
+                  value: _affiliationLabel(character.affiliation),
+                ),
+                _DetailInfoRow(
+                  label: 'Character ID',
+                  value: '#${character.id}',
+                ),
+                _DetailInfoRow(
+                  label: 'Data status',
+                  value: character.deletedAt == null ? 'Active' : 'Archived',
+                  isLast: true,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _PowerValue extends StatelessWidget {
-  const _PowerValue({
+class _DetailStat extends StatelessWidget {
+  const _DetailStat({
+    required this.icon,
     required this.label,
     required this.value,
-    required this.icon,
   });
 
+  final IconData icon;
   final String label;
   final String value;
-  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
-
+    final colors = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Icon(icon, color: color),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: color)),
-        const SizedBox(height: 4),
+        Icon(icon, color: colors.primary, size: 22),
+        const SizedBox(height: 5),
+        Text(
+          label,
+          style: TextStyle(
+            color: colors.onSurfaceVariant,
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            letterSpacing: .8,
+          ),
+        ),
+        const SizedBox(height: 3),
         Text(
           value,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: color,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+            color: colors.onSurface,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
@@ -226,25 +273,25 @@ class _PowerValue extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.icon, required this.title});
+class _DetailSectionTitle extends StatelessWidget {
+  const _DetailSectionTitle({required this.icon, required this.title});
 
   final IconData icon;
   final String title;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    final colors = Theme.of(context).colorScheme;
     return Row(
       children: [
-        Icon(icon, color: theme.colorScheme.primary, size: 21),
+        Icon(icon, color: colors.primary, size: 19),
         const SizedBox(width: 8),
         Text(
           title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.bold,
+          style: TextStyle(
+            color: colors.onSurface,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ],
@@ -252,43 +299,39 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.icon,
+class _DetailInfoRow extends StatelessWidget {
+  const _DetailInfoRow({
     required this.label,
     required this.value,
     this.isLast = false,
   });
 
-  final IconData icon;
   final String label;
   final String value;
   final bool isLast;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    final colors = Theme.of(context).colorScheme;
     return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 11),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: theme.colorScheme.primary),
-          const SizedBox(width: 12),
           Expanded(
             child: Text(
               label,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
             ),
           ),
           Flexible(
             child: Text(
               value,
               textAlign: TextAlign.end,
-              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],

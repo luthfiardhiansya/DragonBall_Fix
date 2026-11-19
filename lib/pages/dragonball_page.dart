@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -70,7 +71,8 @@ class DragonballPage extends StatefulWidget {
   State<DragonballPage> createState() => _DragonballPageState();
 }
 
-class _DragonballPageState extends State<DragonballPage> {
+class _DragonballPageState extends State<DragonballPage>
+    with TickerProviderStateMixin {
   static const String _lottieAnimationUrl =
       'https://raw.githubusercontent.com/xvrh/lottie-flutter/master/example/assets/Mobilo/A.json';
 
@@ -87,6 +89,11 @@ class _DragonballPageState extends State<DragonballPage> {
   double? _maximumKi;
   Timer? _filterLoadingTimer;
   bool _isFilterLoading = false;
+  int _currentTab = 0;
+  final Set<int> _favoriteIds = <int>{};
+  final GlobalKey _favoriteNavKey = GlobalKey();
+  final GlobalKey _dragonBallNavKey = GlobalKey();
+  OverlayEntry? _summonEntry;
 
   @override
   void initState() {
@@ -97,6 +104,7 @@ class _DragonballPageState extends State<DragonballPage> {
   @override
   void dispose() {
     _filterLoadingTimer?.cancel();
+    _summonEntry?.remove();
     _searchController.dispose();
     super.dispose();
   }
@@ -165,13 +173,129 @@ class _DragonballPageState extends State<DragonballPage> {
           _maximumKi == null ||
           (characterKi != null && characterKi <= _maximumKi!);
 
-      return matchesName &&
+      return (_currentTab != 2 || _favoriteIds.contains(character.id)) &&
+          matchesName &&
           matchesGender &&
           matchesRace &&
           matchesAffiliation &&
           matchesMinimumKi &&
           matchesMaximumKi;
     }).toList();
+  }
+
+  void _toggleFavorite(Item character, BuildContext sourceContext) {
+    final adding = !_favoriteIds.contains(character.id);
+    setState(() {
+      if (adding) {
+        _favoriteIds.add(character.id);
+      } else {
+        _favoriteIds.remove(character.id);
+      }
+    });
+    if (adding) _flyFavoriteIcon(sourceContext);
+  }
+
+  void _startSummon(List<Item> characters) {
+    if (_summonEntry != null || characters.isEmpty) return;
+
+    final sourceBox =
+        _dragonBallNavKey.currentContext?.findRenderObject() as RenderBox?;
+    final screen = MediaQuery.sizeOf(context);
+    final startPosition = sourceBox == null
+        ? Offset(screen.width / 2, screen.height - 50)
+        : sourceBox.localToGlobal(
+            Offset(sourceBox.size.width / 2, sourceBox.size.height / 2),
+          );
+    final character = (List<Item>.from(characters)..shuffle()).first;
+
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _SummonOverlay(
+        character: character,
+        startPosition: startPosition,
+        onDismiss: () {
+          if (identical(_summonEntry, entry)) _summonEntry = null;
+          entry.remove();
+        },
+        onOpenDetails: (selectedCharacter) {
+          if (identical(_summonEntry, entry)) _summonEntry = null;
+          entry.remove();
+          _openCharacterDetails(selectedCharacter);
+        },
+      ),
+    );
+    _summonEntry = entry;
+    Overlay.of(context).insert(entry);
+  }
+
+  void _flyFavoriteIcon(BuildContext sourceContext) {
+    final sourceBox = sourceContext.findRenderObject() as RenderBox?;
+    if (sourceBox == null) return;
+    final start = sourceBox.localToGlobal(
+      Offset(sourceBox.size.width / 2, sourceBox.size.height / 2),
+    );
+    final targetBox =
+        _favoriteNavKey.currentContext?.findRenderObject() as RenderBox?;
+    final end = targetBox == null
+        ? Offset(
+            MediaQuery.sizeOf(context).width * .7,
+            MediaQuery.sizeOf(context).height - 44,
+          )
+        : targetBox.localToGlobal(
+            Offset(targetBox.size.width / 2, targetBox.size.height / 2),
+          );
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+    final animation = CurvedAnimation(
+      parent: controller,
+      curve: Curves.easeInOutCubic,
+    );
+    entry = OverlayEntry(
+      builder: (_) => AnimatedBuilder(
+        animation: animation,
+        builder: (context, child) {
+          final position = Offset.lerp(start, end, animation.value)!;
+          return Positioned(
+            left: position.dx - 14,
+            top: position.dy - 14,
+            child: const Icon(Icons.favorite, color: Colors.red, size: 28),
+          );
+        },
+      ),
+    );
+    overlay.insert(entry);
+    controller.forward().whenComplete(() {
+      entry.remove();
+      controller.dispose();
+    });
+  }
+
+  void _openCharacterDetails(Item character) {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 720),
+        reverseTransitionDuration: const Duration(milliseconds: 520),
+        pageBuilder: (_, animation, _) =>
+            DragonballDetailPage(character: character),
+        transitionsBuilder: (_, animation, _, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: .86, end: 1).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   bool get _hasActiveFilters =>
@@ -275,15 +399,10 @@ class _DragonballPageState extends State<DragonballPage> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      extendBody: true,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text('Dragon Ball Characters'),
-        actions: [
-          const Padding(
-            padding: EdgeInsets.only(right: 12),
-            child: ThemeModeToggleButton(),
-          ),
-        ],
       ),
       body: FutureBuilder<Dragonball>(
         future: _charactersFuture,
@@ -323,39 +442,43 @@ class _DragonballPageState extends State<DragonballPage> {
                 child: CustomScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   slivers: [
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      sliver: SliverToBoxAdapter(
-                        child: _FilterPanel(
-                          controller: _searchController,
-                          selectedGender: _selectedGender,
-                          selectedRace: _selectedRace,
-                          selectedAffiliation: _selectedAffiliation,
-                          minimumKi: _minimumKi,
-                          maximumKi: _maximumKi,
-                          hasActiveFilters: _hasActiveFilters,
-                          onSearchChanged: _onSearchChanged,
-                          onGenderChanged: _onGenderChanged,
-                          onRaceChanged: _onRaceChanged,
-                          onAffiliationChanged: _onAffiliationChanged,
-                          onKiFilterTap: _showKiFilterDialog,
-                          onReset: _resetFilters,
+                    if (_currentTab == 1)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                        sliver: SliverToBoxAdapter(
+                          child: _FilterPanel(
+                            controller: _searchController,
+                            selectedGender: _selectedGender,
+                            selectedRace: _selectedRace,
+                            selectedAffiliation: _selectedAffiliation,
+                            minimumKi: _minimumKi,
+                            maximumKi: _maximumKi,
+                            hasActiveFilters: _hasActiveFilters,
+                            onSearchChanged: _onSearchChanged,
+                            onGenderChanged: _onGenderChanged,
+                            onRaceChanged: _onRaceChanged,
+                            onAffiliationChanged: _onAffiliationChanged,
+                            onKiFilterTap: _showKiFilterDialog,
+                            onReset: _resetFilters,
+                          ),
                         ),
                       ),
-                    ),
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                       sliver: SliverToBoxAdapter(
                         child: _ResultSummary(
                           total: data.items.length,
                           shown: filteredCharacters.length,
+                          isFavoriteTab: _currentTab == 2,
                         ),
                       ),
                     ),
                     if (filteredCharacters.isEmpty)
-                      const SliverFillRemaining(
+                      SliverFillRemaining(
                         hasScrollBody: false,
-                        child: _EmptySearchResult(),
+                        child: _currentTab == 2
+                            ? const _EmptyFavoriteResult()
+                            : const _EmptySearchResult(),
                       )
                     else
                       SliverPadding(
@@ -386,6 +509,11 @@ class _DragonballPageState extends State<DragonballPage> {
                                 return _CharacterCard(
                                   character: character,
                                   onTap: () => _showCharacterDetails(character),
+                                  isFavorite: _favoriteIds.contains(
+                                    character.id,
+                                  ),
+                                  onFavorite: (sourceContext) =>
+                                      _toggleFavorite(character, sourceContext),
                                 );
                               }, childCount: filteredCharacters.length),
                             );
@@ -398,6 +526,19 @@ class _DragonballPageState extends State<DragonballPage> {
               if (_isFilterLoading) const _FilterLoadingOverlay(),
             ],
           );
+        },
+      ),
+      bottomNavigationBar: _DragonballBottomBar(
+        favoriteKey: _favoriteNavKey,
+        dragonBallKey: _dragonBallNavKey,
+        currentIndex: _currentTab == 2 ? 3 : _currentTab,
+        onSelected: (index) {
+          if (index == 2) {
+            _charactersFuture.then((data) => _startSummon(data.items));
+            return;
+          }
+          if (index == 4) return;
+          setState(() => _currentTab = index == 3 ? 2 : index);
         },
       ),
     );
@@ -416,6 +557,586 @@ class _DragonballPageState extends State<DragonballPage> {
         ),
       );
     });
+  }
+}
+
+class _DragonballBottomBar extends StatelessWidget {
+  const _DragonballBottomBar({
+    required this.favoriteKey,
+    required this.dragonBallKey,
+    required this.currentIndex,
+    required this.onSelected,
+  });
+
+  final GlobalKey? favoriteKey;
+  final GlobalKey dragonBallKey;
+  final int currentIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: SizedBox(
+        height: 122,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 88,
+              child: Material(
+                color: colors.surface,
+                elevation: 8,
+                child: Row(
+                  children: [
+                    _item(context, Icons.grid_view_rounded, 'Gallery', 0),
+                    _item(context, Icons.search_rounded, 'Search', 1),
+                    const Expanded(child: SizedBox()),
+                    _item(
+                      context,
+                      Icons.favorite_rounded,
+                      'Favorite',
+                      3,
+                      key: favoriteKey,
+                    ),
+                    ValueListenableBuilder<ThemeMode>(
+                      valueListenable: appThemeMode,
+                      builder: (context, mode, _) {
+                        final isDark = mode == ThemeMode.dark;
+                        return _navButton(
+                          context,
+                          isDark
+                              ? Icons.light_mode_rounded
+                              : Icons.dark_mode_rounded,
+                          isDark ? 'Light mode' : 'Dark mode',
+                          4,
+                          onPressed: () {
+                            appThemeMode.value = isDark
+                                ? ThemeMode.light
+                                : ThemeMode.dark;
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: GestureDetector(
+                  key: dragonBallKey,
+                  onTap: () => onSelected(2),
+                  child: Container(
+                    width: 76,
+                    height: 76,
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      shape: BoxShape.circle,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black38,
+                          blurRadius: 12,
+                          offset: Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.asset('assets/bola.png', fit: BoxFit.cover),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _item(
+    BuildContext context,
+    IconData icon,
+    String label,
+    int index, {
+    Key? key,
+  }) {
+    return _navButton(context, icon, label, index, key: key);
+  }
+
+  Widget _navButton(
+    BuildContext context,
+    IconData icon,
+    String label,
+    int index, {
+    VoidCallback? onPressed,
+    Key? key,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    final selected = currentIndex == index;
+    return Expanded(
+      child: InkWell(
+        key: key,
+        onTap: onPressed ?? () => onSelected(index),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: selected ? colors.primary : colors.onSurfaceVariant,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                color: selected ? colors.primary : colors.onSurfaceVariant,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SummonOverlay extends StatefulWidget {
+  const _SummonOverlay({
+    required this.character,
+    required this.startPosition,
+    required this.onDismiss,
+    required this.onOpenDetails,
+  });
+
+  final Item character;
+  final Offset startPosition;
+  final VoidCallback onDismiss;
+  final ValueChanged<Item> onOpenDetails;
+
+  @override
+  State<_SummonOverlay> createState() => _SummonOverlayState();
+}
+
+class _SummonOverlayState extends State<_SummonOverlay>
+    with SingleTickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 7200);
+
+  late final AnimationController _controller;
+  late final Animation<double> _flight;
+  late Item _character;
+
+  @override
+  void initState() {
+    super.initState();
+    _character = widget.character;
+    _controller = AnimationController(vsync: this, duration: _duration);
+    _flight =
+        TweenSequence<double>([
+          TweenSequenceItem(
+            tween: Tween<double>(begin: 0.0, end: 0.05),
+            weight: 12,
+          ),
+          TweenSequenceItem(
+            tween: Tween<double>(
+              begin: 0.05,
+              end: 1.0,
+            ).chain(CurveTween(curve: Curves.easeInOutCubic)),
+            weight: 88,
+          ),
+        ]).animate(
+          CurvedAnimation(parent: _controller, curve: const Interval(.08, .46)),
+        );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final t = _controller.value;
+          final size = MediaQuery.sizeOf(context);
+          final center = Offset(size.width / 2, size.height / 2 - 35);
+          final flightPosition = Offset.lerp(
+            widget.startPosition,
+            center,
+            _flight.value,
+          )!;
+          final ballPosition = t < .47 ? flightPosition : center;
+          final shakeProgress = Curves.easeIn.transform(
+            ((t - .47) / .28).clamp(0.0, 1.0).toDouble(),
+          );
+          final shake = math.sin(t * 150) * 18 * shakeProgress;
+          final flash =
+              ((t - .66) / .1).clamp(0.0, 1.0).toDouble() *
+              (1 - ((t - .76) / .12).clamp(0.0, 1.0).toDouble());
+          final characterProgress = Curves.easeOutCubic.transform(
+            ((t - .72) / .18).clamp(0.0, 1.0).toDouble(),
+          );
+          final isFinal = t >= .9;
+          // Rotate toward the edge and return to the front face. This keeps
+          // the artwork readable instead of showing a mirrored back face.
+          final rotation = characterProgress < .5
+              ? characterProgress * math.pi
+              : (1 - characterProgress) * math.pi;
+          final characterScale =
+              0.72 +
+              (math.sin(characterProgress * math.pi) * .12) +
+              (characterProgress * .28);
+          final ballScale = t < .1
+              ? 1 + Curves.easeOutBack.transform(t / .1) * .16
+              : 1.0;
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.black.withValues(
+                    alpha: (.72 * Curves.easeIn.transform((t / .2).clamp(0, 1)))
+                        .clamp(0, .72),
+                  ),
+                ),
+              ),
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: _SummonParticlesPainter(progress: t),
+                ),
+              ),
+              if (t < .82)
+                IgnorePointer(
+                  child: CustomPaint(
+                    painter: _SummonTrailPainter(
+                      start: widget.startPosition,
+                      end: center,
+                      progress: _flight.value,
+                    ),
+                  ),
+                ),
+              if (t < .82)
+                Positioned(
+                  left: ballPosition.dx - 80 + shake,
+                  top: ballPosition.dy - 80,
+                  child: Transform.rotate(
+                    angle: t * math.pi * 2.4,
+                    child: Transform.scale(
+                      scale: ballScale,
+                      child: _SummonDragonBall(progress: t, flash: flash),
+                    ),
+                  ),
+                ),
+              if (t >= .68)
+                Center(
+                  child: IgnorePointer(
+                    ignoring: !isFinal,
+                    child: GestureDetector(
+                      onTap: isFinal
+                          ? () => widget.onOpenDetails(_character)
+                          : null,
+                      child: Transform(
+                        alignment: Alignment.center,
+                        transform: Matrix4.identity()
+                          ..setEntry(3, 2, 0.0016)
+                          ..rotateY(rotation)
+                          ..scale(characterScale),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            _SummonAura(progress: characterProgress),
+                            ColorFiltered(
+                              colorFilter: characterProgress < .7
+                                  ? const ColorFilter.matrix(<double>[
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                      1,
+                                      0,
+                                    ])
+                                  : const ColorFilter.mode(
+                                      Colors.transparent,
+                                      BlendMode.dst,
+                                    ),
+                              child: Hero(
+                                tag: 'dragonball-character-${_character.id}',
+                                child: Image.network(
+                                  _character.image,
+                                  width: 230,
+                                  height: 330,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              if (flash > 0)
+                IgnorePointer(
+                  child: ColoredBox(
+                    color: Colors.white.withValues(alpha: flash * .78),
+                  ),
+                ),
+              if (isFinal)
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  bottom: 28,
+                  child: AnimatedOpacity(
+                    opacity: isFinal ? 1 : 0,
+                    duration: const Duration(milliseconds: 350),
+                    child: _SummonResultPanel(character: _character),
+                  ),
+                ),
+              if (isFinal)
+                Positioned(
+                  top: MediaQuery.paddingOf(context).top + 12,
+                  right: 12,
+                  child: IconButton(
+                    onPressed: widget.onDismiss,
+                    icon: const Icon(Icons.close_rounded),
+                    color: Colors.white,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black45,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SummonDragonBall extends StatelessWidget {
+  const _SummonDragonBall({required this.progress, required this.flash});
+
+  final double progress;
+  final double flash;
+
+  @override
+  Widget build(BuildContext context) {
+    final shake = ((progress - .47) / .25).clamp(0, 1);
+    return Container(
+      width: 160,
+      height: 160,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Color.lerp(
+              const Color(0xFFFF7A00),
+              Colors.white,
+              flash,
+            )!.withValues(alpha: .58 + shake * .25),
+            blurRadius: 22 + shake * 26,
+            spreadRadius: 2 + shake * 8,
+          ),
+        ],
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipOval(child: Image.asset('assets/bola.png', fit: BoxFit.cover)),
+          if (progress >= .56)
+            CustomPaint(painter: _SummonCrackPainter(progress: progress)),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummonTrailPainter extends CustomPainter {
+  const _SummonTrailPainter({
+    required this.start,
+    required this.end,
+    required this.progress,
+  });
+
+  final Offset start;
+  final Offset end;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (var i = 0; i < 9; i++) {
+      final dotProgress = (progress - i * .035).clamp(0.0, 1.0).toDouble();
+      final dot = Offset.lerp(start, end, dotProgress)!;
+      canvas.drawCircle(
+        dot,
+        (4 - i * .3).clamp(1.0, 4.0).toDouble(),
+        Paint()
+          ..color = const Color(0xFFFFC107).withValues(alpha: .7 - i * .06),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SummonTrailPainter oldDelegate) => true;
+}
+
+class _SummonParticlesPainter extends CustomPainter {
+  const _SummonParticlesPainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2 - 35);
+    for (var i = 0; i < 30; i++) {
+      final angle = i * .87;
+      final distance = 45 + ((progress * 260 + i * 19) % 280);
+      final point =
+          center +
+          Offset(math.cos(angle) * distance, math.sin(angle) * distance);
+      final radius = 1.2 + ((i + progress * 10) % 3) * .5;
+      canvas.drawCircle(
+        point,
+        radius,
+        Paint()
+          ..color = const Color(0xFFFFB300)
+              .withValues(alpha: .15 + (i % 4) * .08),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SummonParticlesPainter oldDelegate) => true;
+}
+
+class _SummonCrackPainter extends CustomPainter {
+  const _SummonCrackPainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.yellowAccent.withValues(
+        alpha: ((progress - .56) / .2).clamp(0, 1),
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    final paths = [
+      [
+        const Offset(.45, .03),
+        const Offset(.39, .25),
+        const Offset(.52, .39),
+        const Offset(.42, .62),
+        const Offset(.55, .98),
+      ],
+      [const Offset(.4, .25), const Offset(.16, .35), const Offset(.05, .55)],
+      [const Offset(.52, .39), const Offset(.77, .29), const Offset(.93, .4)],
+      [const Offset(.42, .62), const Offset(.22, .72), const Offset(.14, .91)],
+    ];
+    for (final points in paths) {
+      if (progress < .6 + paths.indexOf(points) * .025) continue;
+      final path = Path()
+        ..moveTo(points.first.dx * size.width, points.first.dy * size.height);
+      for (final point in points.skip(1)) {
+        path.lineTo(point.dx * size.width, point.dy * size.height);
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SummonCrackPainter oldDelegate) => true;
+}
+
+class _SummonAura extends StatelessWidget {
+  const _SummonAura({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 250 + progress * 28,
+      height: 330 + progress * 28,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(120),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFFA000)
+                .withValues(alpha: .25 + progress * .2),
+            blurRadius: 42,
+            spreadRadius: 8,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummonResultPanel extends StatelessWidget {
+  const _SummonResultPanel({required this.character});
+
+  final Item character;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          character.name,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            shadows: [Shadow(color: Colors.orange, blurRadius: 14)],
+          ),
+        ),
+        const SizedBox(height: 9),
+        const Text(
+          'Tekan karakter untuk melihat detail',
+          style: TextStyle(
+            color: Color(0xFFFFD180),
+            fontSize: 12,
+            letterSpacing: .3,
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -812,10 +1533,15 @@ class _ChoiceSheet<T> extends StatelessWidget {
 }
 
 class _ResultSummary extends StatelessWidget {
-  const _ResultSummary({required this.total, required this.shown});
+  const _ResultSummary({
+    required this.total,
+    required this.shown,
+    required this.isFavoriteTab,
+  });
 
   final int total;
   final int shown;
+  final bool isFavoriteTab;
 
   @override
   Widget build(BuildContext context) {
@@ -824,7 +1550,9 @@ class _ResultSummary extends StatelessWidget {
     return Row(
       children: [
         Text(
-          '$shown karakter ditampilkan',
+          isFavoriteTab
+              ? '$shown karakter yang ditambah ke favorite'
+              : '$shown karakter ditampilkan',
           style: TextStyle(
             color: theme.colorScheme.onSurface,
             fontWeight: FontWeight.w700,
@@ -841,15 +1569,30 @@ class _ResultSummary extends StatelessWidget {
 }
 
 class _CharacterCard extends StatelessWidget {
-  const _CharacterCard({required this.character, required this.onTap});
+  const _CharacterCard({
+    required this.character,
+    required this.onTap,
+    required this.isFavorite,
+    required this.onFavorite,
+  });
 
   final Item character;
   final VoidCallback onTap;
+  final bool isFavorite;
+  final void Function(BuildContext context) onFavorite;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    return _CharacterCardVisual(
+      character: character,
+      onTap: onTap,
+      isFavorite: isFavorite,
+      onFavorite: onFavorite,
+    );
+
+    // ignore: dead_code
     return Card(
       margin: EdgeInsets.zero,
       elevation: 2,
@@ -867,7 +1610,40 @@ class _CharacterCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CharacterImage(url: character.image),
+            Stack(
+              children: [
+                _CharacterImage(url: character.image),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Material(
+                    color: theme.colorScheme.surface.withValues(alpha: 0.9),
+                    shape: const CircleBorder(),
+                    child: Builder(
+                      builder: (heartContext) => IconButton(
+                        tooltip: isFavorite
+                            ? 'Hapus dari favorite'
+                            : 'Tambah ke favorite',
+                        onPressed: () => onFavorite(heartContext),
+                        icon: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          transitionBuilder: (child, animation) =>
+                              ScaleTransition(scale: animation, child: child),
+                          child: Icon(
+                            isFavorite ? Icons.favorite : Icons.favorite_border,
+                            key: ValueKey(isFavorite),
+                            color: isFavorite
+                                ? Colors.red
+                                : theme.colorScheme.onSurfaceVariant,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -937,6 +1713,202 @@ class _CharacterCard extends StatelessWidget {
   }
 }
 
+class _CharacterCardVisual extends StatefulWidget {
+  const _CharacterCardVisual({
+    required this.character,
+    required this.onTap,
+    required this.isFavorite,
+    required this.onFavorite,
+  });
+
+  final Item character;
+  final VoidCallback onTap;
+  final bool isFavorite;
+  final void Function(BuildContext context) onFavorite;
+
+  @override
+  State<_CharacterCardVisual> createState() => _CharacterCardVisualState();
+}
+
+class _CharacterCardVisualState extends State<_CharacterCardVisual> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  bool get _active => _hovered || _pressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final normalBackground = isDark
+        ? const [Color(0xFF11161D), Color(0xFF202832)]
+        : const [Color(0xFFFFFFFF), Color(0xFFE8EDF4)];
+    final activeBackground = isDark
+        ? [
+            colors.primary.withValues(alpha: .26),
+            const Color(0xFF321B25),
+            const Color(0xFF171C28),
+          ]
+        : [
+            colors.primary.withValues(alpha: .22),
+            const Color(0xFFFFE5D4),
+            const Color(0xFFF5F8FF),
+          ];
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Listener(
+        onPointerDown: (_) => setState(() => _pressed = true),
+        onPointerUp: (_) => setState(() => _pressed = false),
+        onPointerCancel: (_) => setState(() => _pressed = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: _active ? activeBackground : normalBackground,
+            ),
+            border: Border.all(
+              color: _active
+                  ? colors.primary.withValues(alpha: .85)
+                  : colors.onSurface.withValues(alpha: .08),
+              width: _active ? 1.4 : 1,
+            ),
+            boxShadow: [
+              if (_active)
+                BoxShadow(
+                  color: colors.primary.withValues(alpha: .34),
+                  blurRadius: 20,
+                  spreadRadius: 1,
+                )
+              else
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? .28 : .12),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          (_active ? colors.primary : const Color(0xFFFF8A00))
+                              .withValues(alpha: _active ? .28 : .14),
+                          Colors.transparent,
+                        ],
+                        stops: const [.0, .52],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: widget.onTap,
+                  splashColor: colors.primary.withValues(alpha: .12),
+                  highlightColor: Colors.transparent,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: AnimatedScale(
+                            scale: _active ? 1.045 : 1,
+                            duration: const Duration(milliseconds: 260),
+                            curve: Curves.easeOutCubic,
+                            child: _CharacterImage(url: widget.character.image),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                        child: Column(
+                          children: [
+                            Text(
+                              widget.character.name.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: colors.onSurface,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: .8,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              raceLabel(widget.character.race),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: _active
+                                    ? colors.primary
+                                    : colors.onSurfaceVariant,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: .5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Material(
+                  color: colors.surface.withValues(alpha: .9),
+                  shape: const CircleBorder(),
+                  child: Builder(
+                    builder: (heartContext) => IconButton(
+                      tooltip: widget.isFavorite
+                          ? 'Hapus dari favorite'
+                          : 'Tambah ke favorite',
+                      onPressed: () => widget.onFavorite(heartContext),
+                      icon: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        transitionBuilder: (child, animation) =>
+                            ScaleTransition(scale: animation, child: child),
+                        child: Icon(
+                          widget.isFavorite
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          key: ValueKey(widget.isFavorite),
+                          color: widget.isFavorite
+                              ? Colors.red
+                              : colors.onSurfaceVariant,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CharacterImage extends StatelessWidget {
   const _CharacterImage({required this.url});
 
@@ -949,9 +1921,9 @@ class _CharacterImage extends StatelessWidget {
 
     return Ink(
       width: double.infinity,
-      height: 172,
+      height: 220,
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: Colors.transparent,
         image: image == null
             ? null
             : DecorationImage(image: image, fit: BoxFit.contain),
@@ -1043,6 +2015,44 @@ class _EmptySearchResult extends StatelessWidget {
             Text(
               'Coba ubah kata kunci atau filter gender.',
               style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyFavoriteResult extends StatelessWidget {
+  const _EmptyFavoriteResult();
+
+  static const _animationUrl =
+      'https://raw.githubusercontent.com/xvrh/lottie-flutter/master/example/assets/Mobilo/B.json';
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Lottie.network(_animationUrl, height: 150, repeat: true),
+            const SizedBox(height: 12),
+            Text(
+              'Favorite kamu masih kosong',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: colors.onSurface,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Tekan ikon hati pada karakter untuk menyimpannya di sini.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.onSurfaceVariant),
             ),
           ],
         ),
