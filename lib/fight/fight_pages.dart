@@ -886,16 +886,18 @@ class _BattleArenaPageState extends State<BattleArenaPage>
                                 ),
                               ),
                             ),
-                          IgnorePointer(
-                            child: ColoredBox(
-                              color: Colors.white.withValues(alpha: flash),
-                            ),
-                          ),
                           Align(
                             alignment: Alignment.center,
                             child: _PhaseBadge(phase: phase),
                           ),
                         ],
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: ColoredBox(
+                        color: Colors.white.withValues(alpha: flash),
                       ),
                     ),
                   ),

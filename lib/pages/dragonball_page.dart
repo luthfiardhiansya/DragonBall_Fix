@@ -9,6 +9,7 @@ import 'package:lottie/lottie.dart';
 
 import '../models/dragonball.dart';
 import '../fight/fight_pages.dart';
+import '../profile/profile_page.dart';
 import '../splash/dragonball_splash.dart';
 import '../theme/app_theme.dart';
 import 'dragonball_detail_page.dart';
@@ -366,7 +367,12 @@ class _DragonballPageState extends State<DragonballPage>
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text('Dragon Ball Characters'),
-        actions: const [ThemeModeToggleButton(), SizedBox(width: 8)],
+        actions: const [
+          ThemeModeToggleButton(),
+          SizedBox(width: 2),
+          ProfileAppBarButton(),
+          SizedBox(width: 8),
+        ],
       ),
       body: FutureBuilder<Dragonball>(
         future: _charactersFuture,
