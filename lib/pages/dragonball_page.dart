@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:lottie/lottie.dart';
 
 import '../models/dragonball.dart';
+import '../fight/fight_pages.dart';
 import '../splash/dragonball_splash.dart';
 import '../theme/app_theme.dart';
 import 'dragonball_detail_page.dart';
@@ -36,8 +37,7 @@ class DragonballPage extends StatefulWidget {
 
 class _DragonballPageState extends State<DragonballPage>
     with TickerProviderStateMixin {
-  static const String _lottieAnimationUrl =
-      'https://raw.githubusercontent.com/xvrh/lottie-flutter/master/example/assets/Mobilo/A.json';
+  static const String _lottieAnimationAsset = 'assets/animations/loading.json';
 
   static final Uri _charactersUri = Uri.parse(
     'https://dragonball-api.com/api/characters?limit=100',
@@ -366,6 +366,7 @@ class _DragonballPageState extends State<DragonballPage>
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text('Dragon Ball Characters'),
+        actions: const [ThemeModeToggleButton(), SizedBox(width: 8)],
       ),
       body: FutureBuilder<Dragonball>(
         future: _charactersFuture,
@@ -495,6 +496,7 @@ class _DragonballPageState extends State<DragonballPage>
         favoriteKey: _favoriteNavKey,
         dragonBallKey: _dragonBallNavKey,
         currentIndex: _currentTab == 2 ? 3 : _currentTab,
+        onFight: _openFightMode,
         onSelected: (index) {
           if (index == 2) {
             _charactersFuture.then((data) => _startSummon(data.items));
@@ -521,6 +523,23 @@ class _DragonballPageState extends State<DragonballPage>
       );
     });
   }
+
+  Future<void> _openFightMode() async {
+    try {
+      final data = await _charactersFuture;
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => FightIntroPage(characters: data.items),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Data karakter belum siap. Coba lagi.')),
+      );
+    }
+  }
 }
 
 class _DragonballBottomBar extends StatelessWidget {
@@ -529,12 +548,14 @@ class _DragonballBottomBar extends StatelessWidget {
     required this.dragonBallKey,
     required this.currentIndex,
     required this.onSelected,
+    required this.onFight,
   });
 
   final GlobalKey? favoriteKey;
   final GlobalKey dragonBallKey;
   final int currentIndex;
   final ValueChanged<int> onSelected;
+  final VoidCallback onFight;
 
   @override
   Widget build(BuildContext context) {
@@ -566,7 +587,13 @@ class _DragonballBottomBar extends StatelessWidget {
                       3,
                       key: favoriteKey,
                     ),
-                    _themeModeButton(context),
+                    _navButton(
+                      context,
+                      Icons.sports_mma_rounded,
+                      'Fight',
+                      4,
+                      onPressed: onFight,
+                    ),
                   ],
                 ),
               ),
@@ -615,44 +642,6 @@ class _DragonballBottomBar extends StatelessWidget {
     Key? key,
   }) {
     return _navButton(context, icon, label, index, key: key);
-  }
-
-  Widget _themeModeButton(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-
-    return Expanded(
-      child: ValueListenableBuilder<ThemeMode>(
-        valueListenable: appThemeMode,
-        builder: (context, mode, _) {
-          final isDark = mode == ThemeMode.dark;
-          return InkWell(
-            onTap: () {
-              appThemeMode.value = isDark ? ThemeMode.light : ThemeMode.dark;
-            },
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                  color: colors.primary,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  isDark ? 'Light' : 'Dark',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: colors.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
   }
 
   Widget _navButton(
@@ -1978,8 +1967,8 @@ class _FilterLoadingOverlay extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Lottie.network(
-                    _DragonballPageState._lottieAnimationUrl,
+                  Lottie.asset(
+                    _DragonballPageState._lottieAnimationAsset,
                     height: 90,
                     repeat: true,
                   ),
@@ -2013,8 +2002,8 @@ class _EmptySearchResult extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Lottie.network(
-              _DragonballPageState._lottieAnimationUrl,
+            Lottie.asset(
+              _DragonballPageState._lottieAnimationAsset,
               height: 150,
               repeat: true,
             ),
@@ -2041,8 +2030,7 @@ class _EmptySearchResult extends StatelessWidget {
 class _EmptyFavoriteResult extends StatelessWidget {
   const _EmptyFavoriteResult();
 
-  static const _animationUrl =
-      'https://raw.githubusercontent.com/xvrh/lottie-flutter/master/example/assets/Mobilo/B.json';
+  static const _animationAsset = 'assets/animations/empty.json';
 
   @override
   Widget build(BuildContext context) {
@@ -2053,7 +2041,7 @@ class _EmptyFavoriteResult extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Lottie.network(_animationUrl, height: 150, repeat: true),
+            Lottie.asset(_animationAsset, height: 150, repeat: true),
             const SizedBox(height: 12),
             Text(
               'Favorite kamu masih kosong',
@@ -2092,8 +2080,8 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Lottie.network(
-              _DragonballPageState._lottieAnimationUrl,
+            Lottie.asset(
+              _DragonballPageState._lottieAnimationAsset,
               height: 150,
               repeat: true,
             ),
@@ -2122,8 +2110,8 @@ class _LoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Lottie.network(
-        _DragonballPageState._lottieAnimationUrl,
+      child: Lottie.asset(
+        _DragonballPageState._lottieAnimationAsset,
         height: 180,
         repeat: true,
       ),

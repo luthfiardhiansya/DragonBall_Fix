@@ -58,6 +58,8 @@ flutter:
   assets:
     - assets/bola.png
     - assets/audio/
+    - assets/animations/
+    - assets/fight/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
