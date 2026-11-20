@@ -1,65 +1,28 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:lottie/lottie.dart';
 
 import '../models/dragonball.dart';
+import '../splash/dragonball_splash.dart';
 import '../theme/app_theme.dart';
 import 'dragonball_detail_page.dart';
 
-class DragonballLoadingPage extends StatefulWidget {
+class DragonballLoadingPage extends StatelessWidget {
   const DragonballLoadingPage({super.key});
 
   @override
-  State<DragonballLoadingPage> createState() => _DragonballLoadingPageState();
-}
-
-class _DragonballLoadingPageState extends State<DragonballLoadingPage> {
-  Timer? _navigationTimer;
-  bool _hasNavigated = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Durasi GIF mengikuti durasi video referensi sekitar 1,5 detik.
-    _navigationTimer = Timer(
-      const Duration(milliseconds: 1650),
-      _openDragonballPage,
-    );
-  }
-
-  void _openDragonballPage() {
-    if (_hasNavigated || !mounted) return;
-    _hasNavigated = true;
-    _navigationTimer?.cancel();
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const DragonballPage()),
-    );
-  }
-
-  @override
-  void dispose() {
-    _navigationTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SizedBox.expand(
-        child: Image.asset(
-          'assets/loadingscreen.gif',
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (context, error, stackTrace) => const Center(
-            child: CircularProgressIndicator(color: Colors.white),
-          ),
-        ),
-      ),
+    return DragonballSplashScreen(
+      onFinished: () {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DragonballPage()),
+        );
+      },
     );
   }
 }
@@ -603,25 +566,7 @@ class _DragonballBottomBar extends StatelessWidget {
                       3,
                       key: favoriteKey,
                     ),
-                    ValueListenableBuilder<ThemeMode>(
-                      valueListenable: appThemeMode,
-                      builder: (context, mode, _) {
-                        final isDark = mode == ThemeMode.dark;
-                        return _navButton(
-                          context,
-                          isDark
-                              ? Icons.light_mode_rounded
-                              : Icons.dark_mode_rounded,
-                          isDark ? 'Light mode' : 'Dark mode',
-                          4,
-                          onPressed: () {
-                            appThemeMode.value = isDark
-                                ? ThemeMode.light
-                                : ThemeMode.dark;
-                          },
-                        );
-                      },
-                    ),
+                    _themeModeButton(context),
                   ],
                 ),
               ),
@@ -670,6 +615,44 @@ class _DragonballBottomBar extends StatelessWidget {
     Key? key,
   }) {
     return _navButton(context, icon, label, index, key: key);
+  }
+
+  Widget _themeModeButton(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Expanded(
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: appThemeMode,
+        builder: (context, mode, _) {
+          final isDark = mode == ThemeMode.dark;
+          return InkWell(
+            onTap: () {
+              appThemeMode.value = isDark ? ThemeMode.light : ThemeMode.dark;
+            },
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                  color: colors.primary,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  isDark ? 'Light' : 'Dark',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: colors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _navButton(
@@ -734,7 +717,11 @@ class _SummonOverlayState extends State<_SummonOverlay>
 
   late final AnimationController _controller;
   late final Animation<double> _flight;
+  final AudioPlayer _flightSound = AudioPlayer();
+  final AudioPlayer _crackSound = AudioPlayer();
+  final AudioPlayer _burstSound = AudioPlayer();
   late Item _character;
+  double _lastProgress = 0;
 
   @override
   void initState() {
@@ -757,12 +744,40 @@ class _SummonOverlayState extends State<_SummonOverlay>
         ]).animate(
           CurvedAnimation(parent: _controller, curve: const Interval(.08, .46)),
         );
+    _controller.addListener(_handleSoundCues);
+    _playSound(_flightSound, 'audio/gacha_flight.wav');
     _controller.forward();
+  }
+
+  void _handleSoundCues() {
+    final progress = _controller.value;
+    if (_lastProgress < .53 && progress >= .53) {
+      _playSound(_crackSound, 'audio/gacha_crack.wav');
+      HapticFeedback.mediumImpact();
+    }
+    if (_lastProgress < .72 && progress >= .72) {
+      _playSound(_burstSound, 'audio/gacha_burst.wav');
+      HapticFeedback.heavyImpact();
+      HapticFeedback.vibrate();
+    }
+    _lastProgress = progress;
+  }
+
+  Future<void> _playSound(AudioPlayer player, String asset) async {
+    try {
+      await player.setVolume(.85);
+      await player.play(AssetSource(asset));
+    } catch (_) {
+      // Audio is optional on platforms where sound is unavailable.
+    }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _flightSound.dispose();
+    _crackSound.dispose();
+    _burstSound.dispose();
     super.dispose();
   }
 

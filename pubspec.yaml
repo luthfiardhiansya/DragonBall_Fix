@@ -38,6 +38,7 @@ dependencies:
   http: ^1.6.0
   intl: ^0.20.3
   lottie: ^3.8.2
+  audioplayers: ^6.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -56,8 +57,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/bola.png
-    - assets/loadingscreen.MOV
-    - assets/loadingscreen.gif
+    - assets/audio/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
